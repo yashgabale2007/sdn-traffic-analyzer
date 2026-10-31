@@ -1,0 +1,2 @@
+server listening on UDP 5001 for 24.0s
+SERVER {'10.0.0.2': {'received': 8140, 'bytes': 8140000, 'max_seq': 12498, 'malformed': 0, 'avg_delay_ms': 82.54065106483291}, '10.0.0.1': {'received': 10001, 'bytes': 10001000, 'max_seq': 15000, 'malformed': 0, 'avg_delay_ms': 82.54314741961015}, '10.0.0.3': {'received': 5952, 'bytes': 5952000, 'max_seq': 9999, 'malformed': 0, 'avg_delay_ms': 82.58837028857201}}

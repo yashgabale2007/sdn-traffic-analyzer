@@ -1,0 +1,13 @@
+mode,scenario,client,offered_mbps,sent,received,loss_pct,rx_mbps,avg_delay_ms
+static,congestion,h1,6,15001,10001,33.33,4.0,82.54
+static,congestion,h2,5,12500,8140,34.88,3.256,82.54
+static,congestion,h3,4,10000,5952,40.48,2.381,82.59
+static,link_failure,h1,4,10000,3989,60.11,1.596,0.06
+static,link_failure,h2,3,7500,2988,60.16,1.195,0.06
+static,link_failure,h3,2,5001,1992,60.17,0.797,0.06
+dynamic,congestion,h1,6,15001,14194,5.38,5.678,82.89
+dynamic,congestion,h2,5,12500,12283,1.74,4.913,2.46
+dynamic,congestion,h3,4,10000,9469,5.31,3.788,82.9
+dynamic,link_failure,h1,4,10000,10000,0.0,4.0,0.05
+dynamic,link_failure,h2,3,7500,7493,0.09,2.997,0.06
+dynamic,link_failure,h3,2,5001,4996,0.1,1.998,0.06

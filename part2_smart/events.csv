@@ -1,0 +1,14 @@
+time,event,detail
+1793414763.844,mode,static
+1793414798.577,link_down,s4 port 1
+1793414798.577,link_up,s2 port 2
+1793414798.577,link_down,s2 port 2
+1793414813.611,link_up,s4 port 1
+1793414827.905,mode,dynamic
+1793414846.966,reroute,10.0.0.1 -> backup (congestion: primary at 9.4 Mbps)
+1793414853.339,link_down,s4 port 1
+1793414853.339,reroute,10.0.0.2 -> backup (failover)
+1793414853.339,reroute,10.0.0.3 -> backup (failover)
+1793414853.340,link_up,s2 port 2
+1793414853.340,link_down,s2 port 2
+1793414868.370,link_up,s4 port 1

@@ -1,0 +1,25 @@
+{
+  "clients": {
+    "10.0.0.2": {
+      "received": 12283,
+      "bytes": 12283000,
+      "max_seq": 12499,
+      "malformed": 0,
+      "avg_delay_ms": 2.463224762417561
+    },
+    "10.0.0.1": {
+      "received": 14194,
+      "bytes": 14194000,
+      "max_seq": 15000,
+      "malformed": 0,
+      "avg_delay_ms": 82.89431111315731
+    },
+    "10.0.0.3": {
+      "received": 9469,
+      "bytes": 9469000,
+      "max_seq": 9999,
+      "malformed": 0,
+      "avg_delay_ms": 82.90362597292385
+    }
+  }
+}
