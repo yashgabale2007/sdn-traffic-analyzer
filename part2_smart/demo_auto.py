@@ -37,6 +37,7 @@ NAMES = {'10.0.0.1': 'h1', '10.0.0.2': 'h2', '10.0.0.3': 'h3'}
 PATHS = {'4': 'port 4 = PRIMARY path (via s2)', '5': 'port 5 = BACKUP path (via s3)'}
 B, CY, YE, GR, RE, X = '\033[1m', '\033[96m', '\033[93m', '\033[92m', '\033[91m', '\033[0m'
 AUTO = False
+RELIABLE = False      # set per test: True only for the DYNAMIC controller (resends missing packets)
 
 
 def say(text):
@@ -79,10 +80,41 @@ def show_events(since):
             print(f'    {YE}{B}CONTROLLER: {parts[1].upper()} {parts[2]}{X}')
 
 
+MA = '\033[95m'
+RS = {'path': None, 'seen': 0, 't0': 0.0}     # resend log of the current run
+
+
+def show_resends():
+    """Print the server's resend activity: NACKs sent, resent packets that arrived, DONE."""
+    path = RS['path']
+    if not path or not os.path.exists(path):
+        return
+    text = open(path).read()
+    lines = text.splitlines()
+    if not text.endswith('\n'):
+        lines = lines[:-1]
+    for row in lines[1 + RS['seen']:]:
+        RS['seen'] += 1
+        t, ip, asked, lo, hi, rec, still, done = row.split(',')
+        name, t = NAMES.get(ip, ip), float(t) - RS['t0']
+        parts = []
+        if int(asked):
+            rng = f'#{lo}' if lo == hi else f'#{lo}-#{hi}'
+            parts.append(f'NACK: asked {name} to resend {asked} packets ({rng})')
+        if int(rec):
+            parts.append(f'{rec} resent packets arrived')
+        if parts:
+            print(f'    {MA}  RESEND t={t:5.1f}s  {name}  ' + '  |  '.join(parts) +
+                  f'  |  still missing: {still}{X}')
+        if done == '1':
+            print(f'    {GR}{B}  DONE   t={t:5.1f}s  {name}: every packet delivered, server sent DONE{X}')
+
+
 def live(path, seconds, t0, seen):
     """Show the server's per-second results for `seconds`."""
     end = time.time() + seconds
     while time.time() < end:
+        show_resends()
         if os.path.exists(path):
             text = open(path).read()
             lines = text.splitlines()
@@ -99,6 +131,21 @@ def live(path, seconds, t0, seen):
         time.sleep(0.5)
 
 
+def recover(net, tag, rates, fail_at):
+    """Reliable mode: wait until the server has every packet from every client."""
+    say('Finishing: the few missing packets are being resent over the working path')
+    note('Server -> client: NACK "these sequence numbers are missing"   (every 0.2 s)')
+    note('Client -> server: resends exactly those packets from its buffer')
+    note('Server -> client: DONE "I have every packet" -> the client stops')
+    srv = f'/tmp/demo_{tag}_srv.json'
+    start = time.time()
+    while not os.path.exists(srv) and time.time() - start < 100:
+        show_resends()
+        time.sleep(0.5)
+    show_resends()
+    note(f'{GR}All clients confirmed complete: every packet delivered.{X}')
+
+
 def results(net, tag, rates):
     srv_path = f'/tmp/demo_{tag}_srv.json'
     for _ in range(30):
@@ -106,17 +153,32 @@ def results(net, tag, rates):
             break
         time.sleep(0.5)
     server = json.load(open(srv_path))['clients']
-    total_sent = total_recv = 0
-    print(f'{B}    {"client":8s}{"sent":>8s}{"received":>10s}{"loss":>9s}{X}')
+    tot = {'sent': 0, 'first': 0, 'recv': 0, 'resent': 0}
+    if RELIABLE:
+        print(f'{B}    {"client":8s}{"sent":>8s}{"lost 1st try":>14s}{"resent":>9s}{"delivered":>11s}{"FINAL loss":>12s}{X}')
+    else:
+        print(f'{B}    {"client":8s}{"sent":>8s}{"received":>10s}{"loss":>9s}{X}')
     for h in rates:
         c = json.load(open(f'/tmp/demo_{tag}_{h}.json'))
-        r = server.get(net.get(h).IP(), {}).get('received', 0)
+        sv = server.get(net.get(h).IP(), {})
+        r, first = sv.get('received', 0), sv.get('first_try', sv.get('received', 0))
         loss = (c['sent'] - r) / c['sent'] * 100 if c['sent'] else 0
-        total_sent += c['sent']
-        total_recv += r
-        print(f'    {h:8s}{c["sent"]:8d}{r:10d}{loss:8.1f}%')
-    total = (total_sent - total_recv) / total_sent * 100 if total_sent else 0
-    print(f'{B}    {"TOTAL":8s}{total_sent:8d}{total_recv:10d}{total:8.1f}%{X}')
+        tot['sent'] += c['sent']; tot['recv'] += r; tot['first'] += first
+        tot['resent'] += c.get('retransmitted', 0)
+        if RELIABLE:
+            lost1 = (c['sent'] - first) / c['sent'] * 100 if c['sent'] else 0
+            colour = GR if loss == 0 else RE
+            print(f'    {h:8s}{c["sent"]:8d}{lost1:13.1f}%{c.get("retransmitted", 0):9d}'
+                  f'{r:11d}{colour}{loss:11.1f}%{X}')
+        else:
+            print(f'    {h:8s}{c["sent"]:8d}{r:10d}{loss:8.1f}%')
+    total = (tot['sent'] - tot['recv']) / tot['sent'] * 100 if tot['sent'] else 0
+    if RELIABLE:
+        lost1 = (tot['sent'] - tot['first']) / tot['sent'] * 100 if tot['sent'] else 0
+        print(f'{B}    {"TOTAL":8s}{tot["sent"]:8d}{lost1:13.1f}%{tot["resent"]:9d}{tot["recv"]:11d}{total:11.1f}%{X}')
+        note('"lost 1st try" = what the network dropped; "FINAL loss" = after resending.')
+    else:
+        print(f'{B}    {"TOTAL":8s}{tot["sent"]:8d}{tot["recv"]:10d}{total:8.1f}%{X}')
     return total
 
 
@@ -127,6 +189,8 @@ def run(net, mode, name, rates, dur, fail_at):
         if os.path.exists(f):
             os.remove(f)
 
+    global RELIABLE
+    RELIABLE = (mode == 'dynamic')       # only the dynamic controller resends lost packets
     net.configLinkStatus('s2', 's4', 'up')
     if not send_ctl({'type': 'mode', 'mode': mode}):
         raise SystemExit(1)
@@ -138,18 +202,26 @@ def run(net, mode, name, rates, dur, fail_at):
     else:
         note('Dynamic = the smart controller: monitors every second, reroutes on')
         note('congestion or loss reports, and fails over when a link goes down.')
+        note('Plus: the few packets lost while it reacts are detected and resent (0% final loss).')
     note(f'Clients: ' + ', '.join(f'{h} {r} Mbps' for h, r in rates.items()) +
          f' = {sum(rates.values())} Mbps total, for {dur} s.')
     show_flows(net)
     pause()
 
     tl = f'/tmp/demo_{tag}_tl.csv'
-    net.get('h4').cmd(f'python3 {HERE}/server.py --duration {dur + 3} --timeline {tl} '
+    RS.update(path=f'/tmp/demo_{tag}_resend.csv' if RELIABLE else None, seen=0)
+    if RELIABLE and os.path.exists(RS['path']):
+        os.remove(RS['path'])
+    rel_srv = f"--reliable --expect {len(rates)} --resend-log {RS['path']} " if RELIABLE else ''
+    net.get('h4').cmd(f'python3 {HERE}/server.py --duration {dur + (90 if RELIABLE else 3)} --timeline {tl} '
+                      f'{rel_srv}'
                       f'--summary /tmp/demo_{tag}_srv.json > /dev/null 2>&1 &')
     time.sleep(1)
     t0 = time.time()
+    RS['t0'] = t0
     for h, r in rates.items():
         net.get(h).cmd(f'python3 {HERE}/client.py --rate {r} --duration {dur} --name {h} '
+                       f'{"--reliable " if RELIABLE else ""}'
                        f'--out /tmp/demo_{tag}_{h}.json > /dev/null 2>&1 &')
     say('Traffic started. Live results from the server on h4 (one line per client per second):')
     seen = []
@@ -177,7 +249,10 @@ def run(net, mode, name, rates, dur, fail_at):
             note(f'{RE}Everyone is still on the overloaded primary path.{X}')
         live(tl, max(0, dur - 6), t0, seen)
 
-    time.sleep(3)
+    if RELIABLE:
+        recover(net, tag, rates, fail_at)
+    else:
+        time.sleep(3)
     say(f'Result: {mode} controller, {name.replace("_", " ")}')
     total = results(net, tag, rates)
     net.configLinkStatus('s2', 's4', 'up')

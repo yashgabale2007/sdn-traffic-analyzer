@@ -27,6 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RES = os.path.join(HERE, 'results')
 FEEDBACK_SOCK = '/tmp/sdn_feedback.sock'
 CLIENT_HOSTS = ['h1', 'h2', 'h3']
+RELIABLE = False      # set per run: True only for the DYNAMIC controller (resends missing packets)
 
 SCENARIOS = {
     # three clients together offer 15 Mbps, more than one 10 Mbps path
@@ -65,6 +66,8 @@ def send_ctl(msg):
 
 
 def run_one(net, mode, name, cfg):
+    global RELIABLE
+    RELIABLE = (mode == 'dynamic')       # only the dynamic controller resends lost packets
     tag = f'{mode}_{name}'
     dur, fail_at = cfg['duration'], cfg['fail_at']
     info(f'\n===== {tag}: {cfg["rates"]} Mbps, {dur}s, failure at {fail_at} =====\n')
@@ -75,14 +78,16 @@ def run_one(net, mode, name, cfg):
     time.sleep(3)
 
     h4 = net.get('h4')
-    h4.cmd(f'python3 {HERE}/server.py --duration {dur + 4} '
+    rel = '--reliable ' if RELIABLE else ''
+    srv_rel = f'--reliable --expect {len(cfg["rates"])} ' if RELIABLE else ''
+    h4.cmd(f'python3 {HERE}/server.py --duration {dur + (100 if RELIABLE else 4)} {srv_rel}'
            f'--timeline {RES}/{tag}_timeline.csv --summary {RES}/{tag}_server.json '
            f'> {RES}/{tag}_server.log 2>&1 &')
     time.sleep(1)
 
     t0 = time.time()
     for h, rate in cfg['rates'].items():
-        net.get(h).cmd(f'python3 {HERE}/client.py --rate {rate} --duration {dur} '
+        net.get(h).cmd(f'python3 {HERE}/client.py --rate {rate} --duration {dur} {rel}'
                        f'--name {h} --out {RES}/{tag}_{h}.json > /dev/null 2>&1 &')
 
     fail_time = None
@@ -91,9 +96,15 @@ def run_one(net, mode, name, cfg):
         info('*** breaking link s2-s4\n')
         net.configLinkStatus('s2', 's4', 'down')
         fail_time = time.time()
-        time.sleep(dur - fail_at + 6)
+        time.sleep(dur - fail_at + (1 if RELIABLE else 6))
     else:
-        time.sleep(dur + 6)
+        time.sleep(dur + (1 if RELIABLE else 6))
+    if RELIABLE:
+        info('*** recovery phase: waiting until every packet has been resent and confirmed\n')
+        start = time.time()
+        while not os.path.exists(f'{RES}/{tag}_server.json') and time.time() - start < 110:
+            time.sleep(1)
+        info(f'*** all packets delivered after {time.time() - start:.0f} s of resending\n')
     net.configLinkStatus('s2', 's4', 'up')
 
     json.dump({'tag': tag, 'mode': mode, 'scenario': name, 't0': t0,
@@ -110,7 +121,10 @@ def run_one(net, mode, name, cfg):
                      'sent': c['sent'], 'received': s['received'],
                      'loss_pct': round(loss, 2),
                      'rx_mbps': round(s['bytes'] * 8 / dur / 1e6, 3),
-                     'avg_delay_ms': round(s['avg_delay_ms'], 2)})
+                     'avg_delay_ms': round(s['avg_delay_ms'], 2),
+                     'retransmitted': c.get('retransmitted', 0),
+                     'first_try_loss_pct': round((c['sent'] - s.get('first_try', s['received']))
+                                                 / c['sent'] * 100, 2) if c['sent'] else 0})
         info(f'  {h}: {rows[-1]}\n')
     return rows
 

@@ -96,6 +96,32 @@ python3 plot_results.py                                   # comparison.png, time
 
 Run a single case: `sudo python3 run_tests.py --modes dynamic --scenarios link_failure`
 
+### Live demo (automatic, narrated)
+
+```bash
+# Part 1 (controller: monitor.py)
+cd part1_meter && sudo python3 demo_auto.py
+# Part 2 (controller: controller.py)
+cd part2_smart && sudo python3 demo_auto.py --congestion
+# Manual demo at the mininet> prompt (adds a `mode static|dynamic` command)
+cd part2_smart && sudo python3 demo_cli.py
+```
+
+### Resending lost packets (dynamic controller only)
+
+With the **dynamic** controller, the few packets lost while it reacts (e.g. during the ~1 s
+failover) are recovered by a selective-repeat protocol on top of UDP:
+
+1. The client numbers every packet and keeps a copy.
+2. Every 0.2 s the server finds missing sequence numbers and sends a **NACK** listing them.
+3. The client resends exactly those packets.
+4. After its last packet the client sends **FIN** ("I sent 0..N"); the server answers **DONE**
+   once it has every packet.
+
+The **static** controller runs plain UDP (no resending), so its loss stays visible as the baseline
+(about 60% in the link-failure test). The dynamic controller ends at **0% final loss**.
+Both `demo_auto.py` and `run_tests.py` do this automatically; no extra option is needed.
+
 ## 4. Test cases
 
 | # | Test | Expected result |

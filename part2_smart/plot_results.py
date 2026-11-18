@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RES = os.path.join(HERE, 'results')
+import sys
+RES = os.path.join(HERE, sys.argv[1] if len(sys.argv) > 1 else 'results')   # e.g. results_reliable
 COLORS = {'static': '#9AA5B1', 'dynamic': '#2F6FEB'}
 
 summary = pd.read_csv(os.path.join(RES, 'summary.csv'))
